@@ -50,6 +50,7 @@ option(LIBXML2_WITH_TLS "Enable thread-local storage" OFF)
 option(LIBXML2_WITH_VALID "Add the DTD validation support" ON)
 option(LIBXML2_WITH_XINCLUDE "Add the XInclude support" ON)
 option(LIBXML2_WITH_XPATH "Add the XPATH support" ON)
+option(LIBXML2_INSTALL"Install applications and library" OFF)
 
 cmake_dependent_option(
     LIBXML2_WITH_ZLIB "Use libz" OFF
@@ -443,18 +444,20 @@ endif()
 
 set(XML_SYSCONFDIR "${CMAKE_INSTALL_FULL_SYSCONFDIR}")
 
-install(FILES ${LIBXML2_HDRS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libxml2/libxml COMPONENT development)
+if(LIBXML2_INSTALL)
+	install(FILES ${LIBXML2_HDRS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libxml2/libxml COMPONENT development)
 
-install(
-    TARGETS    LibXml2
-    EXPORT LibXml2
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT development
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT runtime NAMELINK_COMPONENT development
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
-)
+	install(
+		TARGETS    LibXml2
+		EXPORT LibXml2
+		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT development
+		LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT runtime NAMELINK_COMPONENT development
+		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
+	)
 
-if(MSVC AND BUILD_SHARED_LIBS)
-    install(FILES $<TARGET_PDB_FILE:LibXml2> DESTINATION ${CMAKE_INSTALL_BINDIR} CONFIGURATIONS Debug RelWithDebInfo COMPONENT debug)
+	if(MSVC AND BUILD_SHARED_LIBS)
+		install(FILES $<TARGET_PDB_FILE:LibXml2> DESTINATION ${CMAKE_INSTALL_BINDIR} CONFIGURATIONS Debug RelWithDebInfo COMPONENT debug)
+	endif()
 endif()
 
 if(LIBXML2_WITH_PROGRAMS)
@@ -473,7 +476,9 @@ if(LIBXML2_WITH_PROGRAMS)
         if(HAVE_LIBREADLINE)
             target_link_libraries(${PROGRAM} readline)
         endif()
-        install(TARGETS    ${PROGRAM} EXPORT LibXml2 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT programs)
+		if(LIBXML2_INSTALL)
+			install(TARGETS    ${PROGRAM} EXPORT LibXml2 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT programs)
+		endif()
     endforeach()
 endif()
 
@@ -563,17 +568,19 @@ if(LIBXML2_WITH_PYTHON)
         OUTPUT_NAME xml2mod
         PREFIX lib
     )
-    install(
-        TARGETS    LibXml2Mod
-        ARCHIVE DESTINATION ${LIBXML2_PYTHON_INSTALL_DIR} COMPONENT development
-        LIBRARY DESTINATION ${LIBXML2_PYTHON_INSTALL_DIR} COMPONENT runtime NAMELINK_COMPONENT development
-        RUNTIME DESTINATION ${LIBXML2_PYTHON_INSTALL_DIR} COMPONENT runtime
-    )
-    if(MSVC AND BUILD_SHARED_LIBS)
-        install(FILES $<TARGET_PDB_FILE:LibXml2Mod> DESTINATION ${LIBXML2_PYTHON_INSTALL_DIR} CONFIGURATIONS Debug RelWithDebInfo COMPONENT debug)
-    endif()
-    install(FILES python/drv_libxml2.py DESTINATION ${LIBXML2_PYTHON_INSTALL_DIR} COMPONENT runtime)
-    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libxml2.py DESTINATION ${LIBXML2_PYTHON_INSTALL_DIR} COMPONENT runtime)
+	if(LIBXML2_INSTALL)
+		install(
+			TARGETS    LibXml2Mod
+			ARCHIVE DESTINATION ${LIBXML2_PYTHON_INSTALL_DIR} COMPONENT development
+			LIBRARY DESTINATION ${LIBXML2_PYTHON_INSTALL_DIR} COMPONENT runtime NAMELINK_COMPONENT development
+			RUNTIME DESTINATION ${LIBXML2_PYTHON_INSTALL_DIR} COMPONENT runtime
+		)
+		if(MSVC AND BUILD_SHARED_LIBS)
+			install(FILES $<TARGET_PDB_FILE:LibXml2Mod> DESTINATION ${LIBXML2_PYTHON_INSTALL_DIR} CONFIGURATIONS Debug RelWithDebInfo COMPONENT debug)
+		endif()
+		install(FILES python/drv_libxml2.py DESTINATION ${LIBXML2_PYTHON_INSTALL_DIR} COMPONENT runtime)
+		install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libxml2.py DESTINATION ${LIBXML2_PYTHON_INSTALL_DIR} COMPONENT runtime)
+	endif()
 endif()
 
 if (LIBXML2_WITH_DOCS)
@@ -612,60 +619,69 @@ if (LIBXML2_WITH_DOCS)
         endforeach()
 
         add_custom_target(DocBook ALL DEPENDS ${MAN_PAGES} ${HTML_PAGES})
-
-        install(
-            FILES ${HTML_PAGES}
-            DESTINATION ${CMAKE_INSTALL_DOCDIR}
-            COMPONENT documentation
-        )
+		
+		if(LIBXML2_INSTALL)
+			install(
+				FILES ${HTML_PAGES}
+				DESTINATION ${CMAKE_INSTALL_DOCDIR}
+				COMPONENT documentation
+			)
+		endif()
     endif()
-
-    install(
-        FILES ${MAN_PAGES}
-        DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
-        COMPONENT documentation
-    )
-    install(
-        DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/doc/html
-        DESTINATION ${CMAKE_INSTALL_DOCDIR}
-        COMPONENT documentation
-    )
+	
+	if(LIBXML2_INSTALL)
+		install(
+			FILES ${MAN_PAGES}
+			DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
+			COMPONENT documentation
+		)
+		install(
+			DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/doc/html
+			DESTINATION ${CMAKE_INSTALL_DOCDIR}
+			COMPONENT documentation
+		)
+	endif()
 endif()
 
-configure_package_config_file(
-    libxml2-config.cmake.cmake.in libxml2-config.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libxml2-${PROJECT_VERSION}
-)
+if(LIBXML2_INSTALL)
+	configure_package_config_file(
+		libxml2-config.cmake.cmake.in libxml2-config.cmake
+		INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libxml2-${PROJECT_VERSION}
+	)
 
-install(
-    FILES ${CMAKE_CURRENT_BINARY_DIR}/libxml2-config.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libxml2-${PROJECT_VERSION}
-    COMPONENT development
-)
+	install(
+		FILES ${CMAKE_CURRENT_BINARY_DIR}/libxml2-config.cmake
+		DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libxml2-${PROJECT_VERSION}
+		COMPONENT development
+	)
 
-write_basic_package_version_file(
-    ${CMAKE_CURRENT_BINARY_DIR}/libxml2-config-version.cmake
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
+	write_basic_package_version_file(
+		${CMAKE_CURRENT_BINARY_DIR}/libxml2-config-version.cmake
+		VERSION ${PROJECT_VERSION}
+		COMPATIBILITY SameMajorVersion
+	)
 
-install(
-    FILES ${CMAKE_CURRENT_BINARY_DIR}/libxml2-config-version.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libxml2-${PROJECT_VERSION}
-    COMPONENT development
-)
+	install(
+		FILES ${CMAKE_CURRENT_BINARY_DIR}/libxml2-config-version.cmake
+		DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libxml2-${PROJECT_VERSION}
+		COMPONENT development
+	)
 
-install(
-    EXPORT LibXml2
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libxml2-${PROJECT_VERSION}
-    NAMESPACE LibXml2::
-    FILE libxml2-export.cmake
-    COMPONENT development
-)
+	install(
+		EXPORT LibXml2
+		DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libxml2-${PROJECT_VERSION}
+		NAMESPACE LibXml2::
+		FILE libxml2-export.cmake
+		COMPONENT development
+	)
+endif()
 
 configure_file(config.h.cmake.in config.h)
 configure_file(include/libxml/xmlversion.h.in libxml/xmlversion.h)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libxml/xmlversion.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libxml2/libxml COMPONENT development)
+
+if(LIBXML2_INSTALL)
+	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libxml/xmlversion.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libxml2/libxml COMPONENT development)
+endif()
 
 if(LIBXML2_WITH_PYTHON)
     set(prefix "${CMAKE_INSTALL_PREFIX}")
@@ -718,13 +734,19 @@ set(exec_prefix "\${prefix}")
 set(libdir "\${prefix}/${CMAKE_INSTALL_LIBDIR}")
 set(includedir "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
 configure_file(libxml-2.0.pc.in libxml-2.0.pc @ONLY)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libxml-2.0.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig COMPONENT development)
+
+if(LIBXML2_INSTALL)
+	install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libxml-2.0.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig COMPONENT development)
+endif()
 
 if(WIN32)
     set(prefix "\$(cd \"\$(dirname \"\$0\")\"; pwd -P)/..")
 endif()
 configure_file(xml2-config.in xml2-config @ONLY)
-install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/xml2-config DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT development)
+
+if(LIBXML2_INSTALL)
+	install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/xml2-config DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT development)
+endif()
 
 set(XML_INCLUDEDIR "-I${CMAKE_INSTALL_FULL_INCLUDEDIR}/libxml2")
 set(XML_LIBDIR "-L${CMAKE_INSTALL_FULL_LIBDIR}")
