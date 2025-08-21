@@ -100,24 +100,44 @@ typedef void (* xmlParserInputDeallocate)(xmlChar *str);
  */
 struct _xmlParserInput {
     /* Input buffer */
-    xmlParserInputBuffer *buf;
-    /* The file analyzed, if any */
+    xmlParserInputBuffer *buf XML_DEPRECATED_MEMBER;
+    /**
+     * @deprecated Use #xmlCtxtGetInputPosition
+     *
+     * The filename or URI, if any
+     */
     const char *filename;
     /* unused */
     const char *directory XML_DEPRECATED_MEMBER;
     /* Base of the array to parse */
     const xmlChar *base;
-    /* Current char being parsed */
+    /**
+     * @deprecated Use #xmlCtxtGetInputWindow
+     *
+     * Current char being parsed
+     */
     const xmlChar *cur;
     /* end of the array to parse */
     const xmlChar *end;
     /* unused */
     int length XML_DEPRECATED_MEMBER;
-    /* Current line */
+    /**
+     * @deprecated Use #xmlCtxtGetInputPosition
+     *
+     * Current line
+     */
     int line;
-    /* Current column */
+    /**
+     * @deprecated Use #xmlCtxtGetInputPosition
+     *
+     * Current column
+     */
     int col;
-    /* How many xmlChars already consumed */
+    /**
+     * @deprecated Use #xmlCtxtGetInputPosition
+     *
+     * How many xmlChars already consumed
+     */
     unsigned long consumed;
     /* function to deallocate the base */
     xmlParserInputDeallocate free XML_DEPRECATED_MEMBER;
@@ -243,9 +263,10 @@ struct _xmlParserCtxt {
      */
     struct _xmlSAXHandler *sax;
     /**
+     * @deprecated Use #xmlCtxtGetUserData
+     *
      * user data for SAX interface, defaults to the context itself
      */
-    /* TODO: Add accessor */
     void *userData;
     /**
      * @deprecated Use xmlCtxtGetDocument()
@@ -308,16 +329,10 @@ struct _xmlParserCtxt {
     /* Node analysis stack only used for DOM building */
 
     /**
+     * @deprecated Use #xmlCtxtGetNode
+     *
      * The current element.
-     *
-     * This is only valid and useful if the default SAX callbacks
-     * which build a document tree are intercepted. This mode of
-     * operation is fragile and discouraged.
-     *
-     * Contains the current element whose content is being parsed,
-     * or NULL if the parser is in top-level or DTD content.
      */
-    /* TODO: Add accessor */
     xmlNode *node;
     /* Depth of the parsing stack */
     int nodeNr XML_DEPRECATED_MEMBER;
@@ -370,10 +385,11 @@ struct _xmlParserCtxt {
     int token XML_DEPRECATED_MEMBER;
 
     /**
+     * @deprecated Don't use
+     *
      * The main document URI, if available, with its last
      * component stripped.
      */
-    /* TODO: Add accessor */
     char *directory;
 
     /* Node name stack */
@@ -404,38 +420,36 @@ struct _xmlParserCtxt {
      */
     int disableSAX XML_DEPRECATED_MEMBER;
     /**
+     * @deprecated Use xmlCtxtIsInSubset
+     *
      * Set if DTD content is parsed.
      *
      * - 0: not in DTD
      * - 1: in internal DTD subset
      * - 2: in external DTD subset
      */
-    /* TODO: Add accessor */
     int inSubset;
     /**
      * @deprecated Use the `name` argument of the
-     * `internalSubset` SAX callback.
+     * `internalSubset` SAX callback or #xmlCtxtGetDocTypeDecl
      *
      * Name of the internal subset (root element type).
      */
-    /* TODO: Add accessor */
     const xmlChar *intSubName;
     /**
      * @deprecated Use the `systemId` argument of the
-     * `internalSubset` SAX callback.
+     * `internalSubset` SAX callback or #xmlCtxtGetDocTypeDecl
      *
      * System identifier (URI) of external the subset.
      */
-    /* TODO: Add accessor */
     xmlChar *extSubURI;
     /**
      * @deprecated Use the `publicId` argument of the
-     * `internalSubset` SAX callback.
+     * `internalSubset` SAX callback or #xmlCtxtGetDocTypeDecl
      *
      * This member is MISNAMED. It contains the *public* identifier
      * of the external subset.
      */
-    /* TODO: Add accessor */
     xmlChar *extSubSystem;
 
     /* xml:space values */
@@ -1245,6 +1259,9 @@ XMLPUBVAR const char *const xmlParserVersion;
 XML_DEPRECATED
 XMLPUBVAR const xmlSAXLocator xmlDefaultSAXLocator;
 #ifdef LIBXML_SAX1_ENABLED
+/**
+ * @deprecated Use #xmlSAXVersion or #xmlSAX2InitDefaultSAXHandler
+ */
 XML_DEPRECATED
 XMLPUBVAR const xmlSAXHandlerV1 xmlDefaultSAXHandler;
 #endif
@@ -1713,6 +1730,9 @@ typedef enum {
      * This option enables DTD validation which requires to load
      * external DTDs and external entities (both general and
      * parameter entities) unless XML_PARSE_NO_XXE was set.
+     *
+     * DTD validation is vulnerable to algorithmic complexity
+     * attacks and should never be enabled with untrusted input.
      */
     XML_PARSE_DTDVALID = 1<<4,
     /**
@@ -1909,6 +1929,8 @@ XMLPUBFUN int
 		xmlCtxtIsHtml		(xmlParserCtxt *ctxt);
 XMLPUBFUN int
 		xmlCtxtIsStopped	(xmlParserCtxt *ctxt);
+XMLPUBFUN int
+		xmlCtxtIsInSubset	(xmlParserCtxt *ctxt);
 #ifdef LIBXML_VALID_ENABLED
 XMLPUBFUN xmlValidCtxt *
 		xmlCtxtGetValidCtxt	(xmlParserCtxt *ctxt);
@@ -1921,6 +1943,28 @@ XMLPUBFUN int
 		xmlCtxtGetStandalone	(xmlParserCtxt *ctxt);
 XMLPUBFUN xmlParserStatus
 		xmlCtxtGetStatus	(xmlParserCtxt *ctxt);
+XMLPUBFUN void *
+		xmlCtxtGetUserData	(xmlParserCtxt *ctxt);
+XMLPUBFUN xmlNode *
+		xmlCtxtGetNode		(xmlParserCtxt *ctxt);
+XMLPUBFUN int
+		xmlCtxtGetDocTypeDecl	(xmlParserCtxt *ctxt,
+					 const xmlChar **name,
+					 const xmlChar **systemId,
+					 const xmlChar **publicId);
+XMLPUBFUN int
+		xmlCtxtGetInputPosition	(xmlParserCtxt *ctxt,
+					 int inputIndex,
+					 const char **filname,
+					 int *line,
+					 int *col,
+					 unsigned long *bytePos);
+XMLPUBFUN int
+		xmlCtxtGetInputWindow	(xmlParserCtxt *ctxt,
+					 int inputIndex,
+					 const xmlChar **startOut,
+					 int *sizeInOut,
+					 int *offsetOut);
 XMLPUBFUN void
 		xmlCtxtSetErrorHandler	(xmlParserCtxt *ctxt,
 					 xmlStructuredErrorFunc handler,

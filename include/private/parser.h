@@ -1,6 +1,8 @@
 #ifndef XML_PARSER_H_PRIVATE__
 #define XML_PARSER_H_PRIVATE__
 
+#include <limits.h>
+
 #include <libxml/parser.h>
 #include <libxml/xmlversion.h>
 
@@ -87,8 +89,6 @@ xmlCtxtErrIO(xmlParserCtxt *ctxt, int code, const char *uri);
 XML_HIDDEN int
 xmlCtxtIsCatastrophicError(xmlParserCtxt *ctxt);
 
-XML_HIDDEN void
-xmlHaltParser(xmlParserCtxt *ctxt);
 XML_HIDDEN int
 xmlParserGrow(xmlParserCtxt *ctxt);
 XML_HIDDEN void
@@ -154,5 +154,25 @@ xmlExpandEntitiesInAttValue(xmlParserCtxt *ctxt, const xmlChar *str,
 
 XML_HIDDEN void
 xmlParserCheckEOF(xmlParserCtxt *ctxt, xmlParserErrors code);
+
+XML_HIDDEN void
+xmlParserInputGetWindow(xmlParserInput *input, const xmlChar **startOut,
+                        int *sizeInOut, int *offsetOut);
+
+static XML_INLINE void
+xmlSaturatedAdd(unsigned long *dst, unsigned long val) {
+    if (val > ULONG_MAX - *dst)
+        *dst = ULONG_MAX;
+    else
+        *dst += val;
+}
+
+static XML_INLINE void
+xmlSaturatedAddSizeT(unsigned long *dst, size_t val) {
+    if (val > ULONG_MAX - *dst)
+        *dst = ULONG_MAX;
+    else
+        *dst += val;
+}
 
 #endif /* XML_PARSER_H_PRIVATE__ */

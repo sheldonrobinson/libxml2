@@ -97,6 +97,9 @@ xmlCheckVersion(int version) {
  * Register a callback function that will be called on errors and
  * warnings. If handler is NULL, the error handler will be deactivated.
  *
+ * If you only want to disable parser errors being printed to
+ * stderr, use xmlParserOption XML_PARSE_NOERROR.
+ *
  * This is the recommended way to collect errors from the parser and
  * takes precedence over all other error reporting mechanisms.
  * These are (in order of precedence):
@@ -327,11 +330,31 @@ xmlCtxtVErr(xmlParserCtxt *ctxt, xmlNode *node, xmlErrorDomain domain,
             return;
         ctxt->nbWarnings += 1;
     } else {
-        /* Report at least one fatal error. */
-        if ((ctxt->nbErrors >= XML_MAX_ERRORS) &&
-            ((level < XML_ERR_FATAL) || (ctxt->wellFormed == 0)) &&
-            (!xmlIsCatastrophicError(level, code)))
-            return;
+        /*
+         * By long-standing design, the parser isn't completely
+         * stopped on well-formedness errors. Only SAX callbacks
+         * are disabled.
+         *
+         * In some situations, we really want to abort as fast
+         * as possible.
+         */
+        if (xmlIsCatastrophicError(level, code) ||
+            code == XML_ERR_RESOURCE_LIMIT ||
+            code == XML_ERR_ENTITY_LOOP) {
+            ctxt->disableSAX = 2; /* really stop parser */
+        } else {
+            /* Report at least one fatal error. */
+            if (ctxt->nbErrors >= XML_MAX_ERRORS &&
+                (level < XML_ERR_FATAL || ctxt->wellFormed == 0))
+                return;
+
+            if (level == XML_ERR_FATAL && ctxt->recovery == 0)
+                ctxt->disableSAX = 1;
+        }
+
+        if (level == XML_ERR_FATAL)
+            ctxt->wellFormed = 0;
+        ctxt->errNo = code;
         ctxt->nbErrors += 1;
     }
 
@@ -380,17 +403,6 @@ xmlCtxtVErr(xmlParserCtxt *ctxt, xmlNode *node, xmlErrorDomain domain,
     if (res < 0) {
         xmlCtxtErrMemory(ctxt);
         return;
-    }
-
-    if (level >= XML_ERR_ERROR)
-        ctxt->errNo = code;
-    if (level == XML_ERR_FATAL) {
-        ctxt->wellFormed = 0;
-
-        if (xmlCtxtIsCatastrophicError(ctxt))
-            ctxt->disableSAX = 2; /* stop parser */
-        else if (ctxt->recovery == 0)
-            ctxt->disableSAX = 1;
     }
 }
 
@@ -492,6 +504,71 @@ xmlFatalErr(xmlParserCtxt *ctxt, xmlParserErrors code, const char *info)
 }
 
 /**
+ * Return window into current parser data.
+ *
+ * @param input  parser input
+ * @param startOut  start of window (output)
+ * @param sizeInOut  maximum size of window (in)
+ *                   actual size of window (out)
+ * @param offsetOut  offset of current position inside
+ *                   window (out)
+ */
+void
+xmlParserInputGetWindow(xmlParserInput *input, const xmlChar **startOut,
+                        int *sizeInOut, int *offsetOut) {
+    const xmlChar *cur, *base, *start;
+    int n, col;
+    int size = *sizeInOut;
+
+    cur = input->cur;
+    base = input->base;
+    /* skip backwards over any end-of-lines */
+    while ((cur > base) && ((*(cur) == '\n') || (*(cur) == '\r'))) {
+	cur--;
+    }
+    n = 0;
+    /* search backwards for beginning-of-line (to max buff size) */
+    while ((n < size) && (cur > base) &&
+	   (*cur != '\n') && (*cur != '\r')) {
+        cur--;
+        n++;
+    }
+    if ((n > 0) && ((*cur == '\n') || (*cur == '\r'))) {
+        cur++;
+    } else {
+        /* skip over continuation bytes */
+        while ((cur < input->cur) && ((*cur & 0xC0) == 0x80))
+            cur++;
+    }
+    /* calculate the error position in terms of the current position */
+    col = input->cur - cur;
+    /* search forward for end-of-line (to max buff size) */
+    n = 0;
+    start = cur;
+    /* copy selected text to our buffer */
+    while ((*cur != 0) && (*(cur) != '\n') && (*(cur) != '\r')) {
+        int len = input->end - cur;
+        int c = xmlGetUTF8Char(cur, &len);
+
+        if ((c < 0) || (n + len > size))
+            break;
+        cur += len;
+	n += len;
+    }
+
+    /*
+     * col can only point to the end of the buffer if
+     * there's space for a marker.
+     */
+    if (col >= n)
+        col = n < size ? n : size - 1;
+
+    *startOut = start;
+    *sizeInOut = n;
+    *offsetOut = col;
+}
+
+/**
  * Check whether the character is allowed by the production
  *
  * @deprecated Internal function, don't use.
@@ -516,20 +593,6 @@ xmlIsLetter(int c) {
 
 /* we need to keep enough input to show errors in context */
 #define LINE_LEN        80
-
-/**
- * Blocks further parser processing don't override error
- * for internal use
- *
- * @param ctxt  an XML parser context
- */
-void
-xmlHaltParser(xmlParserCtxt *ctxt) {
-    if (ctxt == NULL)
-        return;
-    ctxt->instate = XML_PARSER_EOF; /* TODO: Remove after refactoring */
-    ctxt->disableSAX = 2;
-}
 
 /**
  * @deprecated This function was internal and is deprecated.
@@ -574,7 +637,6 @@ xmlParserGrow(xmlParserCtxt *ctxt) {
     if (curBase > maxLength) {
         xmlFatalErr(ctxt, XML_ERR_RESOURCE_LIMIT,
                     "Buffer size limit exceeded, try XML_PARSE_HUGE\n");
-        xmlHaltParser(ctxt);
 	return(-1);
     }
 
@@ -699,11 +761,7 @@ xmlParserShrink(xmlParserCtxt *ctxt) {
 
         if (res > 0) {
             used -= res;
-            if ((res > ULONG_MAX) ||
-                (in->consumed > ULONG_MAX - (unsigned long)res))
-                in->consumed = ULONG_MAX;
-            else
-                in->consumed += res;
+            xmlSaturatedAddSizeT(&in->consumed, res);
         }
 
         xmlBufUpdateInput(buf->buffer, in, used);
@@ -734,11 +792,7 @@ xmlParserInputShrink(xmlParserInput *in) {
 	ret = xmlBufShrink(in->buf->buffer, used - LINE_LEN);
 	if (ret > 0) {
             used -= ret;
-            if ((ret > ULONG_MAX) ||
-                (in->consumed > ULONG_MAX - (unsigned long)ret))
-                in->consumed = ULONG_MAX;
-            else
-                in->consumed += ret;
+            xmlSaturatedAddSizeT(&in->consumed, ret);
 	}
 
         xmlBufUpdateInput(in->buf->buffer, in, used);
@@ -3213,6 +3267,30 @@ xmlCtxtIsStopped(xmlParserCtxt *ctxt) {
     return(ctxt->disableSAX != 0);
 }
 
+/**
+ * Check whether a DTD subset is being parsed.
+ *
+ * Should only be used by SAX callbacks.
+ *
+ * Return values are
+ *
+ * - 0: not in DTD
+ * - 1: in internal DTD subset
+ * - 2: in external DTD subset
+ *
+ * @since 2.15.0
+ *
+ * @param ctxt  parser context
+ * @returns the subset status
+ */
+int
+xmlCtxtIsInSubset(xmlParserCtxt *ctxt) {
+    if (ctxt == NULL)
+        return(0);
+
+    return(ctxt->inSubset);
+}
+
 #ifdef LIBXML_VALID_ENABLED
 /**
  * @since 2.14.0
@@ -3228,6 +3306,188 @@ xmlCtxtGetValidCtxt(xmlParserCtxt *ctxt) {
     return(&ctxt->vctxt);
 }
 #endif
+
+/**
+ * Return user data.
+ *
+ * Return user data of a custom SAX parser or the parser context
+ * itself if unset.
+ *
+ * @since 2.15.0
+ *
+ * @param ctxt  parser context
+ * @returns the user data.
+ */
+void *
+xmlCtxtGetUserData(xmlParserCtxt *ctxt) {
+    if (ctxt == NULL)
+        return NULL;
+
+    return ctxt->userData;
+}
+
+/**
+ * Return the current node being parsed.
+ *
+ * This is only useful if the default SAX callbacks which build
+ * a document tree are intercepted. This mode of operation is
+ * fragile and discouraged.
+ *
+ * Returns the current element node, or the document node if no
+ * element was parsed yet.
+ *
+ * @since 2.15.0
+ *
+ * @param ctxt  parser context
+ * @returns the current node.
+ */
+xmlNode *
+xmlCtxtGetNode(xmlParserCtxt *ctxt) {
+    if (ctxt == NULL)
+        return NULL;
+
+    if (ctxt->node != NULL)
+        return ctxt->node;
+    return (xmlNode *) ctxt->myDoc;
+}
+
+/**
+ * Return data from the doctype declaration.
+ *
+ * Should only be used by SAX callbacks.
+ *
+ * @since 2.15.0
+ *
+ * @param ctxt  parser context
+ * @param name  name of the root element (output)
+ * @param systemId  system ID (URI) of the external subset (output)
+ * @param publicId  public ID of the external subset (output)
+ * @returns 0 on success, -1 if argument is invalid
+ */
+int
+xmlCtxtGetDocTypeDecl(xmlParserCtxt *ctxt,
+                      const xmlChar **name,
+                      const xmlChar **systemId,
+                      const xmlChar **publicId) {
+    if (ctxt == NULL)
+        return -1;
+
+    if (name != NULL)
+        *name = ctxt->intSubName;
+    if (systemId != NULL)
+        *systemId = ctxt->extSubURI;
+    if (publicId != NULL)
+        *publicId = ctxt->extSubSystem; /* The member is misnamed */
+
+    return 0;
+}
+
+/**
+ * Return input position.
+ *
+ * Should only be used by error handlers or SAX callbacks.
+ *
+ * Because of entities, there can be multiple inputs. Non-negative
+ * values of `inputIndex` (0, 1, 2, ...)  select inputs starting
+ * from the outermost input. Negative values (-1, -2, ...) select
+ * inputs starting from the innermost input.
+ *
+ * The byte position is counted in possibly decoded UTF-8 bytes,
+ * so it won't match the position in the raw input data.
+ *
+ * @since 2.15.0
+ *
+ * @param ctxt  parser context
+ * @param inputIndex  input index
+ * @param filename  filename (output)
+ * @param line  line number (output)
+ * @param col  column number (output)
+ * @param utf8BytePos  byte position (output)
+ * @returns 0 on success, -1 if arguments are invalid
+ */
+int
+xmlCtxtGetInputPosition(xmlParserCtxt *ctxt, int inputIndex,
+                        const char **filename, int *line, int *col,
+                        unsigned long *utf8BytePos) {
+    xmlParserInput *input;
+
+    if (ctxt == NULL)
+        return -1;
+
+    if (inputIndex < 0) {
+        inputIndex += ctxt->inputNr;
+        if (inputIndex < 0)
+            return -1;
+    }
+    if (inputIndex >= ctxt->inputNr)
+        return -1;
+
+    input = ctxt->inputTab[inputIndex];
+
+    if (filename != NULL)
+        *filename = input->filename;
+    if (line != NULL)
+        *line = input->line;
+    if (col != NULL)
+        *col = input->col;
+
+    if (utf8BytePos != NULL) {
+        unsigned long consumed;
+
+        consumed = input->consumed;
+        xmlSaturatedAddSizeT(&consumed, input->cur - input->base);
+        *utf8BytePos = consumed;
+    }
+
+    return 0;
+}
+
+/**
+ * Return window into input data.
+ *
+ * Should only be used by error handlers or SAX callbacks.
+ * The returned pointer is only valid until the callback returns.
+ *
+ * Because of entities, there can be multiple inputs. Non-negative
+ * values of `inputIndex` (0, 1, 2, ...)  select inputs starting
+ * from the outermost input. Negative values (-1, -2, ...) select
+ * inputs starting from the innermost input.
+ *
+ * @since 2.15.0
+ *
+ * @param ctxt  parser context
+ * @param inputIndex  input index
+ * @param startOut  start of window (output)
+ * @param sizeInOut  maximum size of window (in)
+ *                   actual size of window (out)
+ * @param offsetOut  offset of current position inside
+ *                   window (out)
+ * @returns 0 on success, -1 if arguments are invalid
+ */
+int
+xmlCtxtGetInputWindow(xmlParserCtxt *ctxt, int inputIndex,
+                      const xmlChar **startOut,
+                      int *sizeInOut, int *offsetOut) {
+    xmlParserInput *input;
+
+    if (ctxt == NULL || startOut == NULL || sizeInOut == NULL ||
+        offsetOut == NULL)
+        return -1;
+
+    if (inputIndex < 0) {
+        inputIndex += ctxt->inputNr;
+        if (inputIndex < 0)
+            return -1;
+    }
+    if (inputIndex >= ctxt->inputNr)
+        return -1;
+
+    input = ctxt->inputTab[inputIndex];
+
+    xmlParserInputGetWindow(input, startOut, sizeInOut, offsetOut);
+
+    return 0;
+}
 
 /************************************************************************
  *									*

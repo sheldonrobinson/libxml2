@@ -408,22 +408,6 @@ xmlNsWarn(xmlParserCtxtPtr ctxt, xmlParserErrors error,
                info1, info2, info3, 0, msg, info1, info2, info3);
 }
 
-static void
-xmlSaturatedAdd(unsigned long *dst, unsigned long val) {
-    if (val > ULONG_MAX - *dst)
-        *dst = ULONG_MAX;
-    else
-        *dst += val;
-}
-
-static void
-xmlSaturatedAddSizeT(unsigned long *dst, unsigned long val) {
-    if (val > ULONG_MAX - *dst)
-        *dst = ULONG_MAX;
-    else
-        *dst += val;
-}
-
 /**
  * Check for non-linear entity expansion behaviour.
  *
@@ -487,7 +471,6 @@ xmlParserEntityCheck(xmlParserCtxtPtr ctxt, unsigned long extra)
         xmlFatalErrMsg(ctxt, XML_ERR_RESOURCE_LIMIT,
                        "Maximum entity amplification factor exceeded, see "
                        "xmlCtxtSetMaxAmplification.\n");
-        xmlHaltParser(ctxt);
         return(1);
     }
 
@@ -1928,7 +1911,6 @@ xmlCtxtPushInput(xmlParserCtxt *ctxt, xmlParserInput *value)
         if (newSize < 0) {
             xmlFatalErrMsg(ctxt, XML_ERR_RESOURCE_LIMIT,
                            "Maximum entity nesting depth exceeded");
-            xmlHaltParser(ctxt);
             return(-1);
         }
         tmp = xmlRealloc(ctxt->inputTab, newSize * sizeof(tmp[0]));
@@ -2023,7 +2005,6 @@ nodePush(xmlParserCtxt *ctxt, xmlNode *value)
                     "Excessive depth in document: %d,"
                     " use XML_PARSE_HUGE option\n",
                     ctxt->nodeNr);
-            xmlHaltParser(ctxt);
             return(-1);
         }
 
@@ -3588,7 +3569,6 @@ xmlExpandPEsInEntityValue(xmlParserCtxtPtr ctxt, xmlSBuf *buf,
 
             if (ent->flags & XML_ENT_EXPANDING) {
                 xmlFatalErr(ctxt, XML_ERR_ENTITY_LOOP, NULL);
-                xmlHaltParser(ctxt);
                 return;
             }
 
@@ -3728,7 +3708,6 @@ xmlCheckEntityInAttValue(xmlParserCtxtPtr ctxt, xmlEntityPtr pent, int depth) {
 
     if (pent->flags & XML_ENT_EXPANDING) {
         xmlFatalErr(ctxt, XML_ERR_ENTITY_LOOP, NULL);
-        xmlHaltParser(ctxt);
         return;
     }
 
@@ -3842,7 +3821,6 @@ xmlExpandEntityInAttValue(xmlParserCtxtPtr ctxt, xmlSBuf *buf,
     if (pent != NULL) {
         if (pent->flags & XML_ENT_EXPANDING) {
             xmlFatalErr(ctxt, XML_ERR_ENTITY_LOOP, NULL);
-            xmlHaltParser(ctxt);
             return(0);
         }
 
@@ -5612,7 +5590,6 @@ xmlParseEntityDecl(xmlParserCtxt *ctxt) {
 	if (RAW != '>') {
 	    xmlFatalErrMsgStr(ctxt, XML_ERR_ENTITY_NOT_FINISHED,
 	            "xmlParseEntityDecl: entity %s not terminated\n", name);
-	    xmlHaltParser(ctxt);
 	} else {
 #ifdef LIBXML_VALID_ENABLED
 	    if ((ctxt->validate) && (ctxt->inputNr > oldInputNr)) {
@@ -7672,7 +7649,6 @@ xmlParsePERefInternal(xmlParserCtxt *ctxt, int markupDecl) {
 
             if (entity->flags & XML_ENT_EXPANDING) {
                 xmlFatalErr(ctxt, XML_ERR_ENTITY_LOOP, NULL);
-                xmlHaltParser(ctxt);
                 return;
             }
 
@@ -9736,7 +9712,6 @@ xmlParseElementStart(xmlParserCtxtPtr ctxt) {
         xmlFatalErrMsgInt(ctxt, XML_ERR_RESOURCE_LIMIT,
                 "Excessive depth in document: %d use XML_PARSE_HUGE option\n",
                 ctxt->nameNr);
-	xmlHaltParser(ctxt);
 	return(-1);
     }
 
@@ -11296,7 +11271,6 @@ xmlParseChunk(xmlParserCtxt *ctxt, const char *chunk, int size,
     xmlBufUpdateInput(ctxt->input->buf->buffer, ctxt->input, pos);
     if (res < 0) {
         xmlCtxtErrIO(ctxt, ctxt->input->buf->error, NULL);
-        xmlHaltParser(ctxt);
         return(ctxt->errNo);
     }
 
@@ -11309,7 +11283,6 @@ xmlParseChunk(xmlParserCtxt *ctxt, const char *chunk, int size,
     if (curBase > maxLength) {
         xmlFatalErr(ctxt, XML_ERR_RESOURCE_LIMIT,
                     "Buffer size limit exceeded, try XML_PARSE_HUGE\n");
-        xmlHaltParser(ctxt);
     }
 
     if ((ctxt->errNo != XML_ERR_OK) && (ctxt->disableSAX != 0))
@@ -11321,7 +11294,6 @@ xmlParseChunk(xmlParserCtxt *ctxt, const char *chunk, int size,
 	xmlBufUpdateInput(ctxt->input->buf->buffer, ctxt->input, pos);
         if (res < 0) {
             xmlCtxtErrIO(ctxt, ctxt->input->buf->error, NULL);
-            xmlHaltParser(ctxt);
             return(ctxt->errNo);
         }
     }
@@ -11421,12 +11393,21 @@ void
 xmlStopParser(xmlParserCtxt *ctxt) {
     if (ctxt == NULL)
         return;
-    xmlHaltParser(ctxt);
+
+    /* This stops the parser */
+    ctxt->disableSAX = 2;
+
     /*
-     * TODO: Update ctxt->lastError and ctxt->wellFormed?
+     * xmlStopParser is often called from error handlers,
+     * so we can't raise an error here to avoid infinite
+     * loops. Just make sure that an error condition is
+     * reported.
      */
-    if (ctxt->errNo != XML_ERR_NO_MEMORY)
+    if (ctxt->errNo == XML_ERR_OK) {
         ctxt->errNo = XML_ERR_USER_STOP;
+        ctxt->lastError.code = XML_ERR_USER_STOP;
+        ctxt->wellFormed = 0;
+    }
 }
 
 /**
@@ -11795,7 +11776,6 @@ xmlCtxtParseEntity(xmlParserCtxtPtr ctxt, xmlEntityPtr ent) {
      */
     if (ent->flags & XML_ENT_EXPANDING) {
         xmlFatalErr(ctxt, XML_ERR_ENTITY_LOOP, NULL);
-        xmlHaltParser(ctxt);
         goto error;
     }
 
@@ -11937,6 +11917,9 @@ xmlParseCtxtExternalEntity(xmlParserCtxt *ctxt, const xmlChar *URL,
  * An external general parsed entity is well-formed if it matches the
  * production labeled extParsedEnt.
  *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
+ *
  * @deprecated Use #xmlParseCtxtExternalEntity.
  *
  *     [78] extParsedEnt ::= TextDecl? content
@@ -11984,6 +11967,9 @@ xmlParseExternalEntity(xmlDoc *doc, xmlSAXHandler *sax, void *user_data,
  *
  *     [43] content ::= (element | CharData | Reference | CDSect | PI |
  *                       Comment)*
+ *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
  *
  * @param doc  the document the chunk pertains to (must not be NULL)
  * @param sax  the SAX handler block (possibly NULL)
@@ -12234,6 +12220,9 @@ xmlParseInNodeContext(xmlNode *node, const char *data, int datalen,
  * the parsed chunk is not well balanced, assuming the parsing succeeded to
  * some extent.
  *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
+ *
  * @param doc  the document the chunk pertains to (must not be NULL)
  * @param sax  the SAX handler block (possibly NULL)
  * @param user_data  The user data returned on SAX callbacks (possibly NULL)
@@ -12306,6 +12295,9 @@ error:
  *
  * This correspond to a "Well Balanced" chunk
  *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
+ *
  * @param sax  the SAX handler block
  * @param filename  the filename
  * @returns the resulting document tree
@@ -12350,6 +12342,11 @@ xmlSAXParseEntity(xmlSAXHandler *sax, const char *filename) {
  *     [78] extParsedEnt ::= TextDecl? content
  *
  * This correspond to a "Well Balanced" chunk
+ *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
+ *
+ * @deprecated Don't use.
  *
  * @param filename  the filename
  * @returns the resulting document tree
@@ -12478,6 +12475,9 @@ xmlCreateFileParserCtxt(const char *filename)
  * It use the given SAX function block to handle the parsing callback.
  * If sax is NULL, fallback to the default DOM tree building routines.
  *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
+ *
  * @deprecated Use #xmlNewSAXParserCtxt and #xmlCtxtReadFile.
  *
  * User data (void *) is stored within the parser context in the
@@ -12528,6 +12528,9 @@ xmlSAXParseFileWithData(xmlSAXHandler *sax, const char *filename,
  * It use the given SAX function block to handle the parsing callback.
  * If sax is NULL, fallback to the default DOM tree building routines.
  *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
+ *
  * @deprecated Use #xmlNewSAXParserCtxt and #xmlCtxtReadFile.
  *
  * @param sax  the SAX handler block
@@ -12548,6 +12551,9 @@ xmlSAXParseFile(xmlSAXHandler *sax, const char *filename,
  * In the case the document is not Well Formed, a attempt to build a
  * tree is tried anyway
  *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT | XML_PARSE_RECOVER.
+ *
  * @deprecated Use #xmlReadDoc with XML_PARSE_RECOVER.
  *
  * @param cur  a pointer to an array of xmlChar
@@ -12562,6 +12568,9 @@ xmlRecoverDoc(const xmlChar *cur) {
 /**
  * Parse an XML file and build a tree. Automatic support for ZLIB/Compress
  * compressed document is provided by default if found at compile-time.
+ *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
  *
  * @deprecated Use #xmlReadFile.
  *
@@ -12580,6 +12589,9 @@ xmlParseFile(const char *filename) {
  * compressed document is provided by default if found at compile-time.
  * In the case the document is not Well Formed, it attempts to build
  * a tree anyway
+ *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT | XML_PARSE_RECOVER.
  *
  * @deprecated Use #xmlReadFile with XML_PARSE_RECOVER.
  *
@@ -12626,6 +12638,9 @@ xmlSetupParserForBuffer(xmlParserCtxt *ctxt, const xmlChar* buffer,
 /**
  * Parse an XML file and call the given SAX handler routines.
  * Automatic support for ZLIB/Compress compressed document is provided
+ *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
  *
  * @deprecated Use #xmlNewSAXParserCtxt and #xmlCtxtReadFile.
  *
@@ -12718,6 +12733,9 @@ xmlCreateMemoryParserCtxt(const char *buffer, int size) {
  * to handle the parsing callback. If sax is NULL, fallback to the default
  * DOM tree building routines.
  *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
+ *
  * @deprecated Use #xmlNewSAXParserCtxt and #xmlCtxtReadMemory.
  *
  * User data (void *) is stored within the parser context in the
@@ -12769,6 +12787,9 @@ xmlSAXParseMemoryWithData(xmlSAXHandler *sax, const char *buffer,
  * to handle the parsing callback. If sax is NULL, fallback to the default
  * DOM tree building routines.
  *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
+ *
  * @deprecated Use #xmlNewSAXParserCtxt and #xmlCtxtReadMemory.
  *
  * @param sax  the SAX handler block
@@ -12787,6 +12808,9 @@ xmlSAXParseMemory(xmlSAXHandler *sax, const char *buffer,
 /**
  * Parse an XML in-memory block and build a tree.
  *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
+ *
  * @deprecated Use #xmlReadMemory.
  *
  * @param buffer  an pointer to a char array
@@ -12803,6 +12827,9 @@ xmlDoc *xmlParseMemory(const char *buffer, int size) {
  * In the case the document is not Well Formed, an attempt to
  * build a tree is tried anyway
  *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT | XML_PARSE_RECOVER.
+ *
  * @deprecated Use #xmlReadMemory with XML_PARSE_RECOVER.
  *
  * @param buffer  an pointer to a char array
@@ -12816,6 +12843,9 @@ xmlDoc *xmlRecoverMemory(const char *buffer, int size) {
 
 /**
  * Parse an XML in-memory buffer and call the given SAX handler routines.
+ *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
  *
  * @deprecated Use #xmlNewSAXParserCtxt and #xmlCtxtReadMemory.
  *
@@ -12897,6 +12927,9 @@ xmlCreateDocParserCtxt(const xmlChar *str) {
  * It use the given SAX function block to handle the parsing callback.
  * If sax is NULL, fallback to the default DOM tree building routines.
  *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
+ *
  * @deprecated Use #xmlNewSAXParserCtxt and #xmlCtxtReadDoc.
  *
  * @param sax  the SAX handler block
@@ -12939,6 +12972,9 @@ xmlSAXParseDoc(xmlSAXHandler *sax, const xmlChar *cur, int recovery) {
 
 /**
  * Parse an XML in-memory document and build a tree.
+ *
+ * This function uses deprecated global variables to set parser options
+ * which default to XML_PARSE_NODICT.
  *
  * @deprecated Use #xmlReadDoc.
  *
