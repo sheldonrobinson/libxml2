@@ -68,9 +68,6 @@ endif
 if WITH_HTTP_SOURCES
 libxml2_la_SOURCES += nanohttp.c
 endif
-if WITH_LZMA_SOURCES
-libxml2_la_SOURCES += xzlib.c
-endif
 if WITH_MODULES_SOURCES
 libxml2_la_SOURCES += xmlmodule.c
 endif
@@ -182,6 +179,7 @@ if WITH_DEBUG_SOURCES
 endif
 if WITH_CATALOG_SOURCES
 	ASAN_OPTIONS=detect_leaks=0 test/catalogs/test.sh ./xmlcatalog$(EXEEXT)
+	ASAN_OPTIONS=detect_leaks=0 test/catalogs/test_sgml.sh ./xmlcatalog$(EXEEXT)
 endif
 endif
 

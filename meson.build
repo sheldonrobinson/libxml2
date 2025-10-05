@@ -71,6 +71,7 @@ global_args = [
     '-Wwrite-strings',
     '-Wstrict-prototypes',
     '-Wmissing-prototypes',
+    '-Wmissing-variable-declarations',
     '-Wno-long-long',
     '-Wno-format-extra-args',
     '-Wno-array-bounds',
@@ -85,7 +86,6 @@ want_docs = get_option('docs').enabled()
 want_http = get_option('http').enabled()
 want_icu = get_option('icu').enabled()
 want_legacy = get_option('legacy').enabled()
-want_lzma = get_option('lzma').enabled()
 want_python = get_option('python').enabled()
 want_thread_alloc = get_option('thread-alloc').enabled()
 want_tls = get_option('tls').enabled()
@@ -367,11 +367,6 @@ if want_zlib
     xml_deps += dependency('zlib')
 endif
 
-### lzma
-if want_lzma
-    xml_deps += dependency('liblzma')
-endif
-
 # icu
 if want_icu
     icu_dep = dependency('icu-uc')
@@ -423,7 +418,6 @@ xml_opt_src = [
     [want_debug, ['debugXML.c']],
     [want_html, ['HTMLparser.c', 'HTMLtree.c']],
     [want_http, ['nanohttp.c']],
-    [want_lzma, ['xzlib.c']],
     [want_modules, ['xmlmodule.c']],
     [want_output, ['xmlsave.c']],
     [want_pattern, ['pattern.c']],
@@ -547,6 +541,9 @@ if want_output
             test('xmlcatalog shell', sh,
                  args: [ 'test/catalogs/test.sh', xmlcatalog.full_path() ],
                  workdir: meson.current_source_dir())
+            test('xmlcatalog shell SGML', sh,
+                 args: [ 'test/catalogs/test_sgml.sh', xmlcatalog.full_path() ],
+                 workdir: meson.current_source_dir())
         endif
     endif
 endif
@@ -588,7 +585,6 @@ config_cmake.set10('BUILD_SHARED_LIBS',
                    get_option('default_library') != 'static')
 config_cmake.set10('WITH_ICONV', want_iconv)
 config_cmake.set10('WITH_ICU', want_icu)
-config_cmake.set10('WITH_LZMA', want_lzma)
 config_cmake.set10('WITH_MODULES', want_modules)
 config_cmake.set10('WITH_THREADS', want_threads)
 config_cmake.set10('WITH_ZLIB', want_zlib)
@@ -625,7 +621,6 @@ summary(
         'icu': want_icu,
         'iso8859x': want_iso8859x,
         'legacy': want_legacy,
-        'lzma': want_lzma,
         'modules': want_modules,
         'output': want_output,
         'pattern': want_pattern,

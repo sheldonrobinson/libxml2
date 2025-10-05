@@ -1,6 +1,8 @@
 #ifndef XML_PARSER_H_PRIVATE__
 #define XML_PARSER_H_PRIVATE__
 
+#include <limits.h>
+
 #include <libxml/parser.h>
 #include <libxml/xmlversion.h>
 
@@ -20,6 +22,10 @@
  * Set if the validation is enabled.
  */
 #define XML_VCTXT_VALIDATE (1u << 2)
+/**
+ * Set when parsing entities.
+ */
+#define XML_VCTXT_IN_ENTITY (1u << 3)
 
 /*
  * TODO: Rename to avoid confusion with xmlParserInputFlags
@@ -87,8 +93,6 @@ xmlCtxtErrIO(xmlParserCtxt *ctxt, int code, const char *uri);
 XML_HIDDEN int
 xmlCtxtIsCatastrophicError(xmlParserCtxt *ctxt);
 
-XML_HIDDEN void
-xmlHaltParser(xmlParserCtxt *ctxt);
 XML_HIDDEN int
 xmlParserGrow(xmlParserCtxt *ctxt);
 XML_HIDDEN void
@@ -154,5 +158,25 @@ xmlExpandEntitiesInAttValue(xmlParserCtxt *ctxt, const xmlChar *str,
 
 XML_HIDDEN void
 xmlParserCheckEOF(xmlParserCtxt *ctxt, xmlParserErrors code);
+
+XML_HIDDEN void
+xmlParserInputGetWindow(xmlParserInput *input, const xmlChar **startOut,
+                        int *sizeInOut, int *offsetOut);
+
+static XML_INLINE void
+xmlSaturatedAdd(unsigned long *dst, unsigned long val) {
+    if (val > ULONG_MAX - *dst)
+        *dst = ULONG_MAX;
+    else
+        *dst += val;
+}
+
+static XML_INLINE void
+xmlSaturatedAddSizeT(unsigned long *dst, size_t val) {
+    if (val > ULONG_MAX - *dst)
+        *dst = ULONG_MAX;
+    else
+        *dst += val;
+}
 
 #endif /* XML_PARSER_H_PRIVATE__ */

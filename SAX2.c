@@ -30,6 +30,10 @@
 #include "private/parser.h"
 #include "private/tree.h"
 
+#ifndef SIZE_MAX
+  #define SIZE_MAX ((size_t) -1)
+#endif
+
 /*
  * @param ctxt  an XML validation parser context
  * @param msg  a string to accompany the error message
@@ -1136,7 +1140,7 @@ xmlSAX1Attribute(xmlParserCtxtPtr ctxt, const xmlChar *fullname,
     }
 
     if (ctxt->replaceEntities == 0) {
-        if (xmlNodeParseContent((xmlNodePtr) ret, value, INT_MAX) < 0)
+        if (xmlNodeParseAttValue(ret->doc, ret, value, SIZE_MAX, NULL) < 0)
             xmlSAX2ErrMemory(ctxt);
     } else if (value != NULL) {
         ret->children = xmlNewDocText(ctxt->myDoc, value);
@@ -1186,8 +1190,19 @@ xmlSAX1Attribute(xmlParserCtxtPtr ctxt, const xmlChar *fullname,
                 xmlFree(val);
 	    }
 	} else {
+            /*
+             * When replacing entities, make sure that IDs in
+             * entities aren't registered. This also shouldn't be
+             * done when entities aren't replaced, but this would
+             * require to rework IDREF checks.
+             */
+            if (ctxt->input->entity != NULL)
+                ctxt->vctxt.flags |= XML_VCTXT_IN_ENTITY;
+
 	    ctxt->valid &= xmlValidateOneAttribute(&ctxt->vctxt, ctxt->myDoc,
 					       ctxt->node, ret, value);
+
+            ctxt->vctxt.flags &= ~XML_VCTXT_IN_ENTITY;
 	}
     } else
 #endif /* LIBXML_VALID_ENABLED */
@@ -1967,8 +1982,8 @@ xmlSAX2AttributeNs(xmlParserCtxtPtr ctxt,
 		tmp->parent = (xmlNodePtr) ret;
 	    }
 	} else if (valueend > value) {
-            if (xmlNodeParseContent((xmlNodePtr) ret, value,
-                                    valueend - value) < 0)
+            if (xmlNodeParseAttValue(ret->doc, ret, value, valueend - value,
+                                     NULL) < 0)
                 xmlSAX2ErrMemory(ctxt);
 	}
     } else if (value != NULL) {
@@ -2053,8 +2068,19 @@ xmlSAX2AttributeNs(xmlParserCtxtPtr ctxt,
             if (dup == NULL)
                 xmlSAX2ErrMemory(ctxt);
 
+            /*
+             * When replacing entities, make sure that IDs in
+             * entities aren't registered. This also shouldn't be
+             * done when entities aren't replaced, but this would
+             * require to rework IDREF checks.
+             */
+            if (ctxt->input->entity != NULL)
+                ctxt->vctxt.flags |= XML_VCTXT_IN_ENTITY;
+
 	    ctxt->valid &= xmlValidateOneAttribute(&ctxt->vctxt,
 	                             ctxt->myDoc, ctxt->node, ret, dup);
+
+            ctxt->vctxt.flags &= ~XML_VCTXT_IN_ENTITY;
 	}
     } else
 #endif /* LIBXML_VALID_ENABLED */
@@ -2509,7 +2535,6 @@ xmlSAX2Text(xmlParserCtxtPtr ctxt, const xmlChar *ch, int len,
         if ((len > maxSize) || (oldSize > maxSize - len)) {
             xmlFatalErr(ctxt, XML_ERR_RESOURCE_LIMIT,
                         "Text node too long, try XML_PARSE_HUGE");
-            xmlHaltParser(ctxt);
             return;
         }
 

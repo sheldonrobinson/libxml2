@@ -1092,9 +1092,7 @@ xmlFreeElement(xmlElementPtr elem) {
 /**
  * Register a new element declaration.
  *
- * @deprecated Internal function, don't use.
- *
- * @param ctxt  the validation context
+ * @param ctxt  the validation context (optional)
  * @param dtd  pointer to the DTD
  * @param name  the entity name
  * @param type  the element type
@@ -1555,9 +1553,7 @@ xmlFreeAttribute(xmlAttributePtr attr) {
 /**
  * Register a new attribute declaration.
  *
- * @deprecated Internal function, don't use.
- *
- * @param ctxt  the validation context
+ * @param ctxt  the validation context (optional)
  * @param dtd  pointer to the DTD
  * @param elem  the element name
  * @param name  the attribute name
@@ -1918,10 +1914,8 @@ xmlFreeNotation(xmlNotationPtr nota) {
 /**
  * Register a new notation declaration.
  *
- * @deprecated Internal function, don't use.
- *
+ * @param ctxt  the validation context (optional)
  * @param dtd  pointer to the DTD
- * @param ctxt  the validation context
  * @param name  the entity name
  * @param publicId  the public identifier or NULL
  * @param systemId  the system identifier or NULL
@@ -3945,7 +3939,7 @@ xmlValidateOneAttribute(xmlValidCtxt *ctxt, xmlDoc *doc,
 	       attr->name, elem->name, NULL);
 	return(0);
     }
-    if (attr->atype == XML_ATTRIBUTE_ID)
+    if (attr->id != NULL)
         xmlRemoveID(doc, attr);
     attr->atype = attrDecl->atype;
 
@@ -3968,7 +3962,8 @@ xmlValidateOneAttribute(xmlValidCtxt *ctxt, xmlDoc *doc,
     }
 
     /* Validity Constraint: ID uniqueness */
-    if (attrDecl->atype == XML_ATTRIBUTE_ID) {
+    if (attrDecl->atype == XML_ATTRIBUTE_ID &&
+        (ctxt == NULL || (ctxt->flags & XML_VCTXT_IN_ENTITY) == 0)) {
         if (xmlAddID(ctxt, doc, value, attr) == NULL)
 	    ret = 0;
     }
@@ -6387,8 +6382,6 @@ xmlCtxtValidateDocument(xmlParserCtxt *ctxt, xmlDoc *doc) {
 
 /**
  * Build/extend a list of  potential children allowed by the content tree
- *
- * @deprecated Internal function, don't use.
  *
  * @param ctree  an element content tree
  * @param names  an array to store the list of child names

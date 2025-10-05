@@ -138,6 +138,7 @@
  * Whether the Catalog support is configured in
  */
 #define LIBXML_CATALOG_ENABLED
+#define LIBXML_SGML_CATALOG_ENABLED
 #endif
 
 #if @WITH_XPATH@
@@ -245,13 +246,6 @@
  * Whether the Zlib support is compiled in
  */
 #define LIBXML_ZLIB_ENABLED
-#endif
-
-#if @WITH_LZMA@
-/**
- * Whether the Lzma support is compiled in
- */
-#define LIBXML_LZMA_ENABLED
 #endif
 
 #include <libxml/xmlexports.h>
